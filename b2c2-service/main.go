@@ -6,25 +6,25 @@ import (
 	"net/rpc"
 )
 
-// B2C2 Service struct
-type B2C2Service struct{}
+// Data Layer Service struct
+type DataLayerService struct{}
 
-// ExecuteTrade method
-func (b *B2C2Service) ExecuteTrade(request string, response *string) error {
-	*response = "Trade executed: " + request
+// StoreData method
+func (d *DataLayerService) StoreData(request string, response *string) error {
+	*response = "Data stored: " + request
 	return nil
 }
 
-func startB2C2Service() {
-	service := new(B2C2Service)
+func startDataLayerService() {
+	service := new(DataLayerService)
 	rpc.Register(service)
 
-	listener, err := net.Listen("tcp", ":5007")
+	listener, err := net.Listen("tcp", ":5009")
 	if err != nil {
-		fmt.Println("Error starting B2C2 Service:", err)
+		fmt.Println("Error starting Data Layer Service:", err)
 		return
 	}
-	fmt.Println("B2C2 Service running on port 5007")
+	fmt.Println("Data Layer Service running on port 5009")
 
 	for {
 		conn, err := listener.Accept()
@@ -37,5 +37,5 @@ func startB2C2Service() {
 }
 
 func main() {
-	startB2C2Service()
+	startDataLayerService()
 }

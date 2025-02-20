@@ -2,64 +2,95 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/rpc"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthService defines authentication-related methods
+// AuthService handles authentication
 type AuthService struct{}
 
-// Authenticate validates user credentials
-func (a *AuthService) Authenticate(request string, response *string) error {
-	*response = "Authentication successful for user: " + request
+// LoginRequest contains login credentials
+type LoginRequest struct {
+	Username string
+	Password string
+}
+
+// LoginResponse contains the JWT token
+type LoginResponse struct {
+	Token string
+}
+
+// ValidateUserResponse from User Service
+type ValidateUserResponse struct {
+	Message string
+}
+
+// Secret key for JWT signing
+var jwtSecret = []byte("supersecretkey")
+
+// GenerateJWT creates a JWT token for authentication
+func GenerateJWT(username string) (string, error) {
+	claims := jwt.MapClaims{
+		"username": username,
+		"exp":      time.Now().Add(time.Hour * 1).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(jwtSecret)
+}
+
+// Login validates credentials using User Service
+func (a *AuthService) Login(req LoginRequest, res *LoginResponse) error {
+	client, err := rpc.Dial("tcp", "localhost:5000") // Connect to User Service
+	if err != nil {
+		return fmt.Errorf("Error connecting to User Service: %v", err)
+	}
+	defer client.Close()
+
+	// Call UserService.ValidateUser
+	var validationRes ValidateUserResponse
+	err = client.Call("UserService.ValidateUser", req, &validationRes)
+	if err != nil {
+		return fmt.Errorf("Error calling ValidateUser: %v", err)
+	}
+
+	// Check if credentials are valid
+	if validationRes.Message == "Valid" {
+		token, err := GenerateJWT(req.Username)
+		if err != nil {
+			return err
+		}
+		res.Token = token
+	} else {
+		res.Token = "Invalid credentials"
+	}
 	return nil
 }
 
-// startServer initializes and starts the Authentication Service
-func startServer() {
-	service := new(AuthService)
-	rpc.Register(service)
+func main() {
+	authService := new(AuthService)
+	err := rpc.Register(authService)
+	if err != nil {
+		log.Fatal("Error registering AuthService:", err)
+	}
 
 	listener, err := net.Listen("tcp", ":5001")
 	if err != nil {
-		fmt.Println("Error starting Authentication Service:", err)
-		return
+		log.Fatal("Error starting Authentication Service:", err)
 	}
-	fmt.Println("Authentication Service is running on port 5001...")
+	defer listener.Close()
 
+	fmt.Println("Authentication Service is running on port 5001...")
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Connection error:", err)
+			log.Println("Connection error:", err)
 			continue
 		}
 		go rpc.ServeConn(conn)
 	}
-}
-
-// callUserService calls the User Service to fetch user details
-func callUserService() {
-	time.Sleep(3 * time.Second) // Give User Service time to start
-	client, err := rpc.Dial("tcp", "localhost:5000") // Connect to User Service
-	if err != nil {
-		fmt.Println("Error connecting to User Service:", err)
-		return
-	}
-	defer client.Close()
-
-	var response string
-	err = client.Call("UserService.GetUser", "shahjahan", &response)
-	if err != nil {
-		fmt.Println("Error calling UserService:", err)
-	} else {
-		fmt.Println("Response from User Service:", response)
-	}
-}
-
-func main() {
-	go startServer() // Start the Authentication Service in a goroutine
-	time.Sleep(2 * time.Second)
-	callUserService() // Make an RPC call to User Service
-	select {}         // Keep the service running
 }
