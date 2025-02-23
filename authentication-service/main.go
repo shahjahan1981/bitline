@@ -15,18 +15,20 @@ type AuthService struct{}
 
 // LoginRequest contains login credentials
 type LoginRequest struct {
-	Username string
-	Password string
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
-// LoginResponse contains the JWT token
+// LoginResponse contains the JWT token or error message
 type LoginResponse struct {
-	Token string
+	Success bool   `json:"success"`
+	Token   string `json:"token,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // ValidateUserResponse from User Service
 type ValidateUserResponse struct {
-	Message string
+	Message string `json:"message"`
 }
 
 // Secret key for JWT signing
@@ -36,18 +38,20 @@ var jwtSecret = []byte("supersecretkey")
 func GenerateJWT(username string) (string, error) {
 	claims := jwt.MapClaims{
 		"username": username,
-		"exp":      time.Now().Add(time.Hour * 1).Unix(),
+		"exp":      time.Now().Add(time.Hour * 1).Unix(), // Token expires in 1 hour
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
 }
 
-// Login validates credentials using User Service
+// Login validates credentials using User Service and returns JSON response
 func (a *AuthService) Login(req LoginRequest, res *LoginResponse) error {
 	client, err := rpc.Dial("tcp", "localhost:5000") // Connect to User Service
 	if err != nil {
-		return fmt.Errorf("Error connecting to User Service: %v", err)
+		res.Success = false
+		res.Error = "Error connecting to User Service"
+		return nil
 	}
 	defer client.Close()
 
@@ -55,18 +59,24 @@ func (a *AuthService) Login(req LoginRequest, res *LoginResponse) error {
 	var validationRes ValidateUserResponse
 	err = client.Call("UserService.ValidateUser", req, &validationRes)
 	if err != nil {
-		return fmt.Errorf("Error calling ValidateUser: %v", err)
+		res.Success = false
+		res.Error = "Error calling ValidateUser"
+		return nil
 	}
 
 	// Check if credentials are valid
 	if validationRes.Message == "Valid" {
 		token, err := GenerateJWT(req.Username)
 		if err != nil {
-			return err
+			res.Success = false
+			res.Error = "Error generating token"
+			return nil
 		}
+		res.Success = true
 		res.Token = token
 	} else {
-		res.Token = "Invalid credentials"
+		res.Success = false
+		res.Error = "Invalid credentials"
 	}
 	return nil
 }

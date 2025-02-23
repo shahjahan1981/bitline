@@ -1,65 +1,78 @@
 package main
 
 import (
-    "fmt"
-    "log"
-    "net/rpc"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/rpc"
+	"regexp"
 )
 
 // Registration request
 type RegistrationRequest struct {
-    Username string
-    Password string
+	FullName        string `json:"full_name"`
+	Email           string `json:"email"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirm_password"`
 }
 
 // Registration response
 type RegistrationResponse struct {
-    Message string
+	Message string `json:"message"`
 }
 
-// Login request
-type LoginRequest struct {
-    Username string
-    Password string
+// Validate input fields before sending request
+func validateRegistration(req RegistrationRequest) error {
+	if req.FullName == "" {
+		return fmt.Errorf("full name cannot be empty")
+	}
+	if req.Email == "" || !isValidEmail(req.Email) {
+		return fmt.Errorf("invalid email format")
+	}
+	if req.Password == "" || req.ConfirmPassword == "" {
+		return fmt.Errorf("password fields cannot be empty")
+	}
+	if req.Password != req.ConfirmPassword {
+		return fmt.Errorf("password and confirm password do not match")
+	}
+	return nil
 }
 
-// Login response
-type LoginResponse struct {
-    Token string
+// Email validation function
+func isValidEmail(email string) bool {
+	re := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return re.MatchString(email)
 }
 
 func main() {
-    client, err := rpc.Dial("tcp", "localhost:5004") // Connect to Public API Service
-    if err != nil {
-        log.Fatal("Error connecting to Public API Service:", err)
-    }
-    defer client.Close()
+	client, err := rpc.Dial("tcp", "localhost:5000") // Connect to User Service
+	if err != nil {
+		log.Fatal("Error connecting to User Service:", err)
+	}
+	defer client.Close()
 
-    // Step 1: Register User
-    regReq := RegistrationRequest{
-        Username: "shahjahan",
-        Password: "12345678",
-    }
-    var regRes RegistrationResponse
+	// Step 1: Register User
+	regReq := RegistrationRequest{
+		FullName:        "Shahjahan Aslam",
+		Email:           "shahjahanaslam12345@gmail.com",
+		Password:        "12345678",
+		ConfirmPassword: "12345678",
+	}
 
-    err = client.Call("PublicAPIService.RegisterUser", regReq, &regRes)
-    if err != nil {
-        log.Fatal("Error calling RegisterUser:", err)
-    }
+	// Validate registration request
+	if err := validateRegistration(regReq); err != nil {
+		log.Fatal("Validation Error:", err)
+	}
 
-    fmt.Println("Registration Response:", regRes.Message)
+	var regRes RegistrationResponse
+	err = client.Call("UserService.RegisterUser", regReq, &regRes)
+	if err != nil {
+		log.Fatal("Error calling RegisterUser:", err)
+	}
 
-    // Step 2: Login User
-    loginReq := LoginRequest{
-        Username: "shahjahan",
-        Password: "12345678",
-    }
-    var loginRes LoginResponse
+	fmt.Println("Registration Response:", regRes.Message)
 
-    err = client.Call("PublicAPIService.LoginUser", loginReq, &loginRes)
-    if err != nil {
-        log.Fatal("Error calling LoginUser:", err)
-    }
-
-    fmt.Println("Login Response:", loginRes.Token)
+	// Output JSON format response
+	jsonOutput, _ := json.MarshalIndent(regRes, "", "  ")
+	fmt.Println("JSON Output:", string(jsonOutput))
 }
